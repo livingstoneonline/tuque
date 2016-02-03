@@ -302,9 +302,12 @@ class CurlConnection extends HttpConnection {
    * @return bool
    *   TRUE if Windows, FALSE otherwise.
    */
-  protected function isWindows() {
+  protected function cURLBugWorkaround() {
+    $curl_info = curl_version();
+    $isAlpine = $curl_info['host'] == 'x86_64-alpine-linux-musl';
+    $isWindows = strpos(strtolower(php_uname('s')), 'windows') !== FALSE;
     // Determine if PHP is currently running on Windows.
-    if (strpos(strtolower(php_uname('s')), 'windows') !== FALSE) {
+    if ($isAlpine || $isWindows) {
       return TRUE;
     }
     return FALSE;
@@ -602,7 +605,7 @@ class CurlConnection extends HttpConnection {
         // "Warning: curl_setopt(): cannot represent a stream of type
         // MEMORY as a STDIO FILE* in CurlConnection->putRequest()"
         // Reference: http://bit.ly/18Qym02
-        $file_stream = (($this->isWindows()) ? 'php://temp' : 'php://memory');
+        $file_stream = (($this->cURLBugWorkaround()) ? 'php://temp' : 'php://memory');
         $fh = fopen($file_stream, 'rw');
         fwrite($fh, $file);
         rewind($fh);
@@ -685,13 +688,13 @@ class CurlConnection extends HttpConnection {
       // In Windows, using 'temporary://' with curl_setopt 'CURLOPT_FILE'
       // results in the following error: "Warning: curl_setopt():
       // DrupalTemporaryStreamWrapper::stream_cast is not implemented!"
-      if ($this->isWindows()) {
+      if ($this->cURLBugWorkaround()) {
         $file = str_replace('temporary://', sys_get_temp_dir() . '/', $file);
       }
       $file = fopen($file, 'w+');
       // Determine if the current operating system is Windows.
       // Also check whether the output buffer is being utilized.
-      if (($this->isWindows()) && ($file_original_path == 'php://output')) {
+      if (($this->cURLBugWorkaround()) && ($file_original_path == 'php://output')) {
         // In Windows, ensure the image can be displayed onscreen. Just using
         // 'CURLOPT_FILE' results in a broken image and the following error:
         // "Warning: curl_setopt(): cannot represent a stream of type
@@ -704,7 +707,6 @@ class CurlConnection extends HttpConnection {
       }
       curl_setopt(self::$curlContext, CURLOPT_HEADER, FALSE);
     }
-
     // Ugly substitute for a try catch finally block.
     $exception = NULL;
     try {
